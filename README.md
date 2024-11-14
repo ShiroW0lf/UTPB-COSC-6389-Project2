@@ -20,10 +20,9 @@ Make sure you have Python 3.x installed on your system. You'll also need the fol
 - `matplotlib`
 - `ucimlrepo` (for dataset fetching)
 
-You can install the required packages by running:
-
-```bash
+You can install the required packages by running: 
 pip install numpy pandas matplotlib ucimlrepo
+
 
 
 ### Key Sections:
