@@ -76,25 +76,35 @@ class Neuron:
 
 # Network Class
 class Network:
-    def __init__(self, input_size, hidden_layer_width, num_outputs, activation_fn, activation_deriv_fn, cost_fn):
-        self.hidden_layer = Neuron(input_size, hidden_layer_width, activation_fn, activation_deriv_fn)
-        self.output_layer = Neuron(hidden_layer_width, num_outputs, sigmoid, sigmoid_derivative)
+    def __init__(self, input_size, hidden_layer_sizes, num_outputs, activation_fn, activation_deriv_fn, cost_fn):
+        self.layers = []
+        self.activation_fn = activation_fn
+        self.activation_deriv_fn = activation_deriv_fn
         self.cost_fn = cost_fn
 
+        # Initialize hidden layers dynamically
+        layer_sizes = [input_size] + hidden_layer_sizes
+        for i in range(len(layer_sizes) - 1):
+            self.layers.append(Neuron(layer_sizes[i], layer_sizes[i + 1], activation_fn, activation_deriv_fn))
+
+        # Add output layer
+        self.layers.append(Neuron(hidden_layer_sizes[-1], num_outputs, sigmoid, sigmoid_derivative))
+
     def forward(self, X):
-        hidden_output = self.hidden_layer.forward(X)
-        output = self.output_layer.forward(hidden_output)
+        output = X
+        for layer in self.layers:
+            output = layer.forward(output)
         return output
 
     def backward(self, X, y, output):
-        cost_error = output - y
-        d_output = cost_error
-        d_hidden = self.output_layer.backward(d_output)
-        self.hidden_layer.backward(d_hidden)
+        error = output - y
+        d_output = error
+        for layer in reversed(self.layers):
+            d_output = layer.backward(d_output)
 
     def update(self, learning_rate):
-        self.hidden_layer.update_weights(learning_rate)
-        self.output_layer.update_weights(learning_rate)
+        for layer in self.layers:
+            layer.update_weights(learning_rate)
 
     def train(self, X, y, num_epochs, learning_rate, progress_callback):
         for epoch in range(num_epochs):
@@ -109,11 +119,8 @@ class Network:
                 progress_callback(epoch, cost)
 
     def test_network(self, X):
-        predictions = []
-        for i in range(len(X)):
-            output = self.forward(X[i].reshape(1, -1))
-            predictions.append(output)
-        return np.array(predictions)
+        return np.array([self.forward(x.reshape(1, -1)) for x in X])
+
 
 
 # Function to select activation function and cost function
@@ -145,133 +152,167 @@ def update_progress(epoch, cost, ax, canvas, costs, progress_label, network, ax_
     progress_label.config(text=f"Epoch {epoch} - Cost: {cost:.4f}")
     progress_label.update()
 
-    # Plot the neural network loss (cost) over time
+    # Update loss graph
     costs.append(cost)
     ax.clear()
     ax.set_title("Neural Network Loss")
-    ax.plot(costs, label="Cost", color="blue")
+    ax.plot(costs, label="Loss", color="blue")
     ax.set_xlabel("Epochs")
     ax.set_ylabel("Cost")
     ax.legend()
+    canvas.draw()
 
-    # Visualize the neural network architecture (can be updated each epoch if needed)
-    ax_nn.clear()
+    # Update neural network visualization
+    # ax_nn.clear()
     ax_nn.set_title("Neural Network Architecture")
 
-    # Visualizing input and output layer
-    ax_nn.scatter([0] * len(network.hidden_layer.weights), range(len(network.hidden_layer.weights)), s=500,
-                  color='lightblue', label="Input Layer")
-    ax_nn.scatter([1] * len(network.output_layer.weights), range(len(network.output_layer.weights)), s=500,
-                  color='orange', label="Output Layer")
 
-    # Drawing connections between layers
-    for i in range(len(network.hidden_layer.weights)):
-        for j in range(len(network.output_layer.weights)):
-            ax_nn.plot([0, 1], [i, j], color='gray')
+    num_layers = len(network.layers)
+    max_nodes = max(layer.weights.shape[0] for layer in network.layers)  # Max nodes for scaling
 
-    ax_nn.legend()
+    sample_input = np.random.rand(1, network.layers[0].weights.shape[0])  # Random sample input
+    activations = [sample_input]
+
+    # Perform a forward pass to get activations for all layers
+    for layer in network.layers:
+        activations.append(layer.forward(activations[-1]))
+
+    layer_labels = ["Input Layer"] + [f"Hidden Layer {i + 1}" for i in range(len(network.layers) - 1)] + ["Output Layer"]
+
+    # Visualize layers and activations
+    for layer_idx, (layer, activation) in enumerate(zip(network.layers, activations)):
+        num_nodes = layer.weights.shape[0]
+        x = [layer_idx] * num_nodes
+        y = np.linspace(0, max_nodes, num_nodes)
+        activation_values = activation.flatten()
+
+        # Determine colormap based on layer type
+        cmap = "Blues" if layer_idx == 0 else "Greens" if layer_idx < num_layers - 1 else "Reds"
+        scatter = ax_nn.scatter(x, y, s=500, c=activation_values, cmap=cmap, vmin=0, vmax=1)
+
+        # Annotate nodes with activation values
+        for i, act_val in enumerate(activation_values):
+            ax_nn.text(x[i], y[i], f"{act_val:.2f}", ha='center', va='center', fontsize=8, color="white")
+
+        # Draw connections to next layer
+        if layer_idx < num_layers - 1:
+            next_num_nodes = network.layers[layer_idx + 1].weights.shape[0]
+            next_y = np.linspace(0, max_nodes, next_num_nodes)
+            for i in range(num_nodes):
+                for j in range(next_num_nodes):
+                    ax_nn.plot([layer_idx, layer_idx + 1], [y[i], next_y[j]], color="gray", alpha=0.5)
+
+    ax_nn.legend(handles=[
+        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='blue', markersize=10, label="Input Layer"),
+        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='green', markersize=10, label="Hidden Layers"),
+        plt.Line2D([0], [0], marker='o', color='w', markerfacecolor='red', markersize=10, label="Output Layer"),
+    ], loc="lower center", fontsize=10, ncol=3, bbox_to_anchor=(0.5, -0.15))
     canvas_nn.draw()
 
-    # Redraw the loss graph
-    canvas.draw()
+
+
 
 
 # Updated start_training function with the corrected update_progress call
-def start_training(activation_var, cost_var, epochs_var, learning_rate_var, progress_label, training_label, canvas, ax,
-                   canvas_nn, ax_nn):
+def start_training(activation_var, cost_var, epochs_var, learning_rate_var, hidden_layers_var,
+                   progress_label, training_label, canvas, ax, canvas_nn, ax_nn):
     activation_fn, activation_deriv_fn, cost_fn = get_selected_functions(activation_var, cost_var)
+
+    # Parse hidden layers from input
+    hidden_layers = list(map(int, hidden_layers_var.get().split(',')))
 
     # Initialize the network
     input_size = X.shape[1]
-    hidden_layer_width = 64
     num_outputs = 1
     learning_rate = float(learning_rate_var.get())
     num_epochs = int(epochs_var.get())
 
-    network = Network(input_size, hidden_layer_width, num_outputs, activation_fn, activation_deriv_fn, cost_fn)
+    network = Network(input_size, hidden_layers, num_outputs, activation_fn, activation_deriv_fn, cost_fn)
 
-    # List to store cost history for plotting
     costs = []
 
-    # Function to update the progress label during training
     def progress_callback(epoch, cost):
         update_progress(epoch, cost, ax, canvas, costs, progress_label, network, ax_nn, canvas_nn)
 
-    # Update the training label
     training_label.config(text="Training...")
-    training_label.update()
-
-    # Train the network
     network.train(X.values, y.values, num_epochs, learning_rate, progress_callback)
-
-    # After training, reset training label
     training_label.config(text="Training Completed!")
-    training_label.update()
 
 
 # Create the GUI
-
 def create_ui():
     root = tk.Tk()
     root.title("Neural Network Trainer")
+    root.state('zoomed')  # Fullscreen window
 
     # Activation Function Selection
     activation_label = tk.Label(root, text="Select Activation Function:")
-    activation_label.grid(row=0, column=0)
+    activation_label.grid(row=0, column=0, padx=10, pady=5)
     activation_var = ttk.Combobox(root, values=["Sigmoid", "ReLU", "Tanh"])
     activation_var.set("Sigmoid")
-    activation_var.grid(row=0, column=1)
+    activation_var.grid(row=0, column=1, padx=10, pady=5)
 
     # Cost Function Selection
     cost_label = tk.Label(root, text="Select Cost Function:")
-    cost_label.grid(row=1, column=0)
+    cost_label.grid(row=1, column=0, padx=10, pady=5)
     cost_var = ttk.Combobox(root, values=["Mean Squared Error", "Binary Cross-Entropy"])
     cost_var.set("Mean Squared Error")
-    cost_var.grid(row=1, column=1)
+    cost_var.grid(row=1, column=1, padx=10, pady=5)
+
+    # Number of Hidden Layers Input
+    hidden_layers_label = tk.Label(root, text="Hidden Layers (comma-separated):")
+    hidden_layers_label.grid(row=2, column=0, padx=10, pady=5)
+    hidden_layers_var = tk.Entry(root)
+    hidden_layers_var.insert(0, "5,7,8")  # Default configuration
+    hidden_layers_var.grid(row=2, column=1, padx=10, pady=5)
 
     # Number of Epochs Input
     epochs_label = tk.Label(root, text="Number of Epochs:")
-    epochs_label.grid(row=2, column=0)
+    epochs_label.grid(row=3, column=0, padx=10, pady=5)
     epochs_var = tk.Entry(root)
     epochs_var.insert(0, "1000")
-    epochs_var.grid(row=2, column=1)
+    epochs_var.grid(row=3, column=1, padx=10, pady=5)
 
     # Learning Rate Input
     learning_rate_label = tk.Label(root, text="Learning Rate:")
-    learning_rate_label.grid(row=3, column=0)
+    learning_rate_label.grid(row=4, column=0, padx=10, pady=5)
     learning_rate_var = tk.Entry(root)
     learning_rate_var.insert(0, "0.01")
-    learning_rate_var.grid(row=3, column=1)
+    learning_rate_var.grid(row=4, column=1, padx=10, pady=5)
 
     # Progress Label
     progress_label = tk.Label(root, text="Training Progress")
-    progress_label.grid(row=4, column=0, columnspan=2)
+    progress_label.grid(row=5, column=0, columnspan=2)
 
     # Training Label
     training_label = tk.Label(root, text="Ready to Train")
-    training_label.grid(row=5, column=0, columnspan=2)
+    training_label.grid(row=6, column=0, columnspan=2)
 
-    # Create the plot for loss visualization
-    fig, ax = plt.subplots(figsize=(6, 4))
+    # Loss Plot
+    fig, ax = plt.subplots(figsize=(8, 4))
     canvas = FigureCanvasTkAgg(fig, master=root)
     canvas.get_tk_widget().grid(row=7, column=0, columnspan=2)
-    ax.axis('off')  # Hide axes
+    ax.axis('off')
 
-    # Create the plot for neural network architecture visualization
-    fig_nn, ax_nn = plt.subplots(figsize=(6, 4))
+    # NN Architecture Plot
+
+    fig_nn, ax_nn = plt.subplots(figsize=(12, 6))
     canvas_nn = FigureCanvasTkAgg(fig_nn, master=root)
     canvas_nn.get_tk_widget().grid(row=8, column=0, columnspan=2)
-    ax_nn.axis('off')  # Hide axes
+    ax_nn.axis('off')
 
     # Train Button
-    train_button = tk.Button(root, text="Start Training",
-                             command=lambda: start_training(
-                                 activation_var, cost_var, epochs_var, learning_rate_var,
-                                 progress_label, training_label, canvas, ax, canvas_nn, ax_nn))
-    train_button.grid(row=6, column=0, columnspan=2)
+    train_button = tk.Button(
+        root, text="Start Training",
+        command=lambda: start_training(
+            activation_var, cost_var, epochs_var, learning_rate_var, hidden_layers_var,
+            progress_label, training_label, canvas, ax, canvas_nn, ax_nn
+        )
+    )
+    train_button.grid(row=9, column=0, columnspan=2)
 
-    # Start the GUI loop
     root.mainloop()
+
 
 
 # Main function to run the UI
