@@ -309,7 +309,7 @@ def create_ui():
             progress_label, training_label, canvas, ax, canvas_nn, ax_nn
         )
     )
-    train_button.grid(row=9, column=0, columnspan=2)
+    train_button.grid(row=4, column=0, columnspan=2)
 
     root.mainloop()
 
