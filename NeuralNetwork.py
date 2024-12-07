@@ -144,12 +144,15 @@ def get_selected_functions(activation_var, cost_var):
 
     return activation_fn, activation_deriv_fn, cost_fn
 
+def calculate_accuracy(y_true, y_pred):
+    y_pred_binary = (y_pred > 0.5).astype(int)  # Convert predictions to binary (0 or 1)
+    return np.mean(y_true == y_pred_binary) * 100  # Accuracy in percentage
 
 
 # Function to update the progress label, plot loss, and visualize the neural network
 
-def update_progress(epoch, cost, ax, canvas, costs, progress_label, network, ax_nn, canvas_nn):
-    progress_label.config(text=f"Epoch {epoch} - Cost: {cost:.4f}")
+def update_progress(epoch, cost, accuracy, ax, canvas, costs, progress_label, network, ax_nn, canvas_nn):
+    progress_label.config(text=f"Epoch {epoch} - Cost: {cost:.4f} - Accuracy: {accuracy:.2f}%")
     progress_label.update()
 
     # Update loss graph
@@ -161,6 +164,8 @@ def update_progress(epoch, cost, ax, canvas, costs, progress_label, network, ax_
     ax.set_ylabel("Cost")
     ax.legend()
     canvas.draw()
+
+
 
     # Update neural network visualization
     # ax_nn.clear()
@@ -232,7 +237,10 @@ def start_training(activation_var, cost_var, epochs_var, learning_rate_var, hidd
     costs = []
 
     def progress_callback(epoch, cost):
-        update_progress(epoch, cost, ax, canvas, costs, progress_label, network, ax_nn, canvas_nn)
+        predictions = network.test_network(X.values).flatten()
+        accuracy = calculate_accuracy(y.values, predictions)
+        update_progress(epoch, cost, accuracy, ax, canvas, costs, progress_label, network, ax_nn, canvas_nn)
+
 
     training_label.config(text="Training...")
     network.train(X.values, y.values, num_epochs, learning_rate, progress_callback)
@@ -260,7 +268,7 @@ def create_ui():
     cost_var.grid(row=1, column=1, padx=10, pady=5)
 
     # Number of Hidden Layers Input
-    hidden_layers_label = tk.Label(root, text="Hidden Layers (comma-separated):")
+    hidden_layers_label = tk.Label(root, text="Hidden Layers (comma-separated), Output Layer:")
     hidden_layers_label.grid(row=2, column=0, padx=10, pady=5)
     hidden_layers_var = tk.Entry(root)
     hidden_layers_var.insert(0, "5,7,8")  # Default configuration
